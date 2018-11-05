@@ -11,14 +11,12 @@
 #include <time.h>
 #include <string.h>
 
-#define FILE_NAME_PID "run/daemon.pid"
-#define FILE_NAME_CONFIG "config.txt"
+#define FILE_NAME_PID "run/daemon.pid" //A file with daemon's PID
+#define FILE_NAME_CONFIG "config.txt" //Config file name
 
+//Info messages
 #define MSG_CAUGHT_SIGTERM "SIGTERM has been caught! Exiting..."
 #define MSG_CAUGHT_SIGHUP "SIGHUP has been caught!"
-#define MSG_ERR_CATCH_SIGTERM "Error! Can't catch SIGTERM"
-#define MSG_ERR_CATCH_SIGHUP "Error! Can't catch SIGHUP"
-
 #define MSG_INFO_START "Starting daemonisation."
 #define MSG_INFO_FORK_1_P "First fork successful (Parent)"
 #define MSG_INFO_FORK_1_C "First fork successful (Child)"
@@ -26,6 +24,10 @@
 #define MSG_INFO_FORK_2_P "Second fork successful (Parent)"
 #define MSG_INFO_FORK_2_C "Second fork successful (Child)"
 #define MSG_INFO_USAGE "USAGE: daemon [start|stop]"
+
+//Simple error messages
+#define MSG_ERR_CATCH_SIGTERM "Error! Can't catch SIGTERM"
+#define MSG_ERR_CATCH_SIGHUP "Error! Can't catch SIGHUP"
 #define MSG_ERR_DAEMON_NOT_RUNNING "The daemon is not running!"
 #define MSG_ERR_PID_NAME_ALLOC "A problem with memory allocation for PID file name"
 #define MSG_ERR_COPY_CONFIG_PATH "A problem with copying config path"
@@ -34,6 +36,7 @@
 #define MSG_ERR_CONFIG_EMPTY "A config file is empty"
 #define MSG_ERR_SYS_CAT "A problem with building show script"
 
+//Format strings for error messages
 #define FORMAT_ERR_PID_RM "Failed to remove the pid file. Error number is %d"
 #define FORMAT_ERR_PID_CREATE "Failed to create a pid file while daemonising. Error number is %d"
 #define FORMAT_ERR_PID_WRITE "Failed to write pid to pid file while daemonising. Error number is %d, trying to remove file"
@@ -45,45 +48,50 @@
 #define FORMAT_ERR_REOPEN_STDOUT "Failed to reopen stdin while daemonising. Error number is %d"
 #define FORMAT_ERR_REOPEN_STDERR "Failed to reopen stdin while daemonising. Error number is %d"
 #define FORMAT_ERR_KILL_PID "Failed to terminate running daemon by pid. Error number is %d"
-
 #define FORMAT_ERR_PID_READ "Failed to read a pid file. Error number is %d"
 #define FORMAT_ERR_PID_OPEN "Failed to open a pid file. Error number is %d"
 #define FORMAT_ERR_GET_CWD "Failed to copy current working directory. Error number is %d"
 #define FORMAT_ERR_CONFIG_OPEN "Failed to open config file. Error number is %d"
 
+//Parts of bash script that prints green text in a human-like way
 #define SYS_CMD_1 "x-terminal-emulator -e 'bash -c \"val=\\\""
 #define SYS_CMD_2 "\\\"; for i in $(seq 1 ${#val}); do echo -n \\\"$(tput setaf 2)${val:i-1:1}\\\"; sleep 0.1; done; echo; sleep 10\"'"
 
+//Modes for error handling
 #define ERRMODE_SIMPLE_MSG 0
 #define ERRMODE_ERRNO_FORMAT 1
 #define ERRMODE_TERMINAL_MSG 2
 
-#define MAX_PATH_LENGTH 1024
-#define MAX_EVENTS 10
-#define MAX_TEXT_LENGTH 1024
-#define MAX_SYS_CMD_LENGTH 1184 //MAX_TEXT_LENGTH + 160
-#define DAEMON_SLEEP_DURATION 10
+#define MAX_PATH_LENGTH 1024 //Max config path length
+#define MAX_EVENTS 10 //Max amount of events
+#define MAX_TEXT_LENGTH 1024 //Max event text length 
+#define MAX_SYS_CMD_LENGTH 1184 //MAX_TEXT_LENGTH + 160 //Max inline bash script length
+#define DAEMON_SLEEP_DURATION 10 //Daemon execution period
 
+//Event to be reminded about
 struct event_t
 {
   time_t time;
-  time_t repeat_range;
+  time_t repeat_range; //If 0 then disable repeat
   char text[MAX_TEXT_LENGTH];
-  int shown;
+  int shown; //If not 0 then the event is ignored as outdated
 };
 
+//Event array list
 struct event_array_t
 {
   struct event_t data[MAX_EVENTS];
-  size_t size;
+  size_t size; //Current size of the array
 };
 
+//Daemon data (GLOBAL)
 struct daemon_data_t 
 {
-  char config_path[MAX_PATH_LENGTH];
+  char config_path[MAX_PATH_LENGTH]; //A config path saved before daemonise()
   struct event_array_t events;
 } g_daemon_data;
 
+//Handle error message according to the provided mode
 void on_error(const char* msg, int mode) 
 {
   if (msg != NULL)
@@ -104,6 +112,7 @@ void on_error(const char* msg, int mode)
   exit(1);
 }
 
+//Save config path to the daemon data
 void memorize_config_path() {
   size_t needed_length, wd_length;
   char* result;
@@ -119,6 +128,7 @@ void memorize_config_path() {
     on_error(MSG_ERR_COPY_CONFIG_PATH, ERRMODE_SIMPLE_MSG);
 }
 
+//Update time of the event based on it's repeat range
 void update_event_time(time_t current_time, struct event_t* p_event) 
 {
   long int difference;
@@ -127,12 +137,13 @@ void update_event_time(time_t current_time, struct event_t* p_event)
   if ((difference = difftime(current_time, p_event->time)) > 0)
   {
     if (!range)
-      p_event->shown = 1;
+      p_event->shown = 1; //The event became outdated
     else
       p_event->time += (difference / range + (difference % range ? 1 : 0)) * range;
   }
 }
 
+//Parse config file
 int parse_config_data(FILE* config)
 {
   int buffer_time;
@@ -155,6 +166,7 @@ int parse_config_data(FILE* config)
   return 0;
 }
 
+//Read config file and parse it
 void read_config()
 {
   FILE* config;
@@ -172,6 +184,7 @@ void read_config()
     on_error(MSG_ERR_CONFIG_EMPTY, ERRMODE_SIMPLE_MSG);
 }
 
+//Event output handler
 void show_event(struct event_t* p_event)
 {
   char command[MAX_SYS_CMD_LENGTH + 1];
@@ -184,6 +197,7 @@ void show_event(struct event_t* p_event)
   system(command);
 }
 
+//Show and update event if needed
 void process_event(struct event_t* p_event)
 {
   time_t current_time = time(NULL);
@@ -195,6 +209,7 @@ void process_event(struct event_t* p_event)
   }
 }
 
+//Main routine of the daemon after daemonise
 void daemon_do()
 {
   int i;
@@ -312,11 +327,13 @@ void daemonise()
   fclose(pid_fp);
 }
 
+//Start mode os the daemon
 enum start_mode_t {
-  MODE_STOP,
-  MODE_START,
+  MODE_STOP, //"daemon stop"
+  MODE_START, //"daemon [start]"
 };
 
+//Parse run mode based on passed mode argument
 enum start_mode_t parse_run_mode(const char* arg) 
 { 
   if ((strcmp(arg, "start") == 0) || (strcmp(arg, "stop") == 0))
@@ -325,6 +342,7 @@ enum start_mode_t parse_run_mode(const char* arg)
     on_error(MSG_INFO_USAGE, ERRMODE_TERMINAL_MSG);
 } 
 
+//Handle arguments based on their number
 enum start_mode_t handle_args(int argc, char** argv) 
 {
   if (argc > 2)
@@ -333,17 +351,20 @@ enum start_mode_t handle_args(int argc, char** argv)
   return argc < 2 ? MODE_START : parse_run_mode(argv[1]); //If no additional args -- start mode by default
 }
 
+//Check if a file exists
 int file_exists(char* file_name) 
 {
   struct stat st;
   return !(stat(file_name, &st) == -1 && errno == ENOENT);
 }
 
+//Check if a process with provided PID is running 
 int is_pid_running(int pid) 
 {
   return !(kill(pid, 0) == -1 && errno == ESRCH);
 }
 
+//Terminate a running instance of the daemon
 int terminate_existing_daemon()
 {
   FILE* pid_file;
@@ -378,6 +399,7 @@ void on_mode_stop()
   exit(0);
 }
 
+//Handler for a start mode
 void handle_start(enum start_mode_t mode) 
 {
   memorize_config_path();
@@ -410,4 +432,3 @@ int main(int argc, char** argv)
   }
   return 0;
 }
-

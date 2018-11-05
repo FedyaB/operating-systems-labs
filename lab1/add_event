@@ -1,20 +1,24 @@
 #!/bin/bash
 usage="USAGE: add_event date time [-h|d|w] text"
 config="config.txt"
+#Show usage message if an incorrect number of args 
 if [ "$#" -lt 3 ] || [ "$#" -gt 4 ] ; then
   echo $usage
   exit 1
 fi
+#Unite the 1st and the 2nd argument
 datetime="$1 $2"
 if [ "$#" = 3 ] ; then
   repeat=0
   text="$3"   
 else
   s="$3"
+  #Extract option from the 3rd argument
   option=${s:1}
   if [ -z $option ] ; then
     echo $usage
     exit 1
+  #Convert a mode to seconds
   elif [ $option = "h" ] ; then
     repeat=3600
   elif [ $option = "d" ] ; then
@@ -27,12 +31,14 @@ else
   fi
   text="$4"
 fi
+#Get EPOCH time from the united date
 epoch=$(date -d "$datetime" +"%s")
 if [ $? -ne 0 ] ; then
   echo "Invalid date/time: \"$datetime\""
   echo "Correct format: \"YYYY-MM-DD HH:mm[:ss]\" OR \"MM/DD/YYYY HH:mm[:ss]\""
   exit 1
 fi
+#Build a config file
 echo $text >> $config
 echo $epoch >> $config
 echo $repeat >> $config
