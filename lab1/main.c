@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <errno.h>
+#include <time.h>
 #include <string.h>
 
 #define FILE_NAME_PID "run/daemon.pid"
@@ -30,6 +31,8 @@
 #define MSG_ERR_COPY_CONFIG_PATH "A problem with copying config path"
 #define MSG_ERR_CONFIG_PARSE "Failed to parse config file"
 #define MSG_ERR_CONFIG_NOT_EXIST "A config file was not found"
+#define MSG_ERR_CONFIG_EMPTY "A config file is empty"
+#define MSG_ERR_SYS_CAT "A problem with building show script"
 
 #define FORMAT_ERR_PID_RM "Failed to remove the pid file. Error number is %d"
 #define FORMAT_ERR_PID_CREATE "Failed to create a pid file while daemonising. Error number is %d"
@@ -48,6 +51,9 @@
 #define FORMAT_ERR_GET_CWD "Failed to copy current working directory. Error number is %d"
 #define FORMAT_ERR_CONFIG_OPEN "Failed to open config file. Error number is %d"
 
+#define SYS_CMD_1 "x-terminal-emulator -e 'bash -c \"val=\\\""
+#define SYS_CMD_2 "\\\"; for i in $(seq 1 ${#val}); do echo -n \\\"$(tput setaf 2)${val:i-1:1}\\\"; sleep 0.1; done; echo; sleep 10\"'"
+
 #define ERRMODE_SIMPLE_MSG 0
 #define ERRMODE_ERRNO_FORMAT 1
 #define ERRMODE_TERMINAL_MSG 2
@@ -55,25 +61,28 @@
 #define MAX_PATH_LENGTH 1024
 #define MAX_EVENTS 10
 #define MAX_TEXT_LENGTH 1024
+#define MAX_SYS_CMD_LENGTH 1184 //MAX_TEXT_LENGTH + 160
 #define DAEMON_SLEEP_DURATION 10
+
+FILE* dbg_file = NULL; //DBG
 
 struct event_t
 {
   time_t time;
-  time_t repeat;
+  time_t repeat_range;
   char text[MAX_TEXT_LENGTH];
+  int shown;
 };
 
 struct event_array_t
 {
-  struct event_t events[MAX_EVENTS];
+  struct event_t data[MAX_EVENTS];
   size_t size;
 };
 
 struct daemon_data_t 
 {
   char config_path[MAX_PATH_LENGTH];
-  char word[MAX_PATH_LENGTH];
   struct event_array_t events;
 } g_daemon_data;
 
@@ -112,9 +121,41 @@ void memorize_config_path() {
     on_error(MSG_ERR_COPY_CONFIG_PATH, ERRMODE_SIMPLE_MSG);
 }
 
-int parse_config_data(FILE* config) //!!
+void update_event_time(time_t current_time, struct event_t* p_event) 
 {
-  return fscanf(config, "%s", g_daemon_data.word); 
+  long int difference;
+  long int range = (long int)p_event->repeat_range;
+
+  fprintf(dbg_file, "TEXT:%s\nEPOCH:%ld\nREP:%ld\nSHOWN:%d\n", p_event->text, (long int)p_event->time, (long int)p_event->repeat_range, p_event->shown); //F_DBG
+
+  if (!range)
+    p_event->shown = 1;
+  else
+    if ((difference = difftime(current_time, p_event->time)) > 0)
+      p_event->time += (difference / range + (difference % range ? 1 : 0)) * range;
+}
+
+int parse_config_data(FILE* config)
+{
+  int buffer_time;
+  struct event_t buffer_event;
+  char buffer_line[MAX_TEXT_LENGTH];
+
+  g_daemon_data.events.size = 0;
+  while (fgets(buffer_event.text, MAX_TEXT_LENGTH, config) != NULL && (strcmp(buffer_event.text, "\n") != 0))
+  {
+    if (fgets(buffer_line, MAX_TEXT_LENGTH, config) == NULL || sscanf(buffer_line, "%d", &buffer_time) == -1)
+      return -1;
+    buffer_event.time = buffer_time;
+    if (fgets(buffer_line, MAX_TEXT_LENGTH, config) == NULL || sscanf(buffer_line, "%d", &buffer_time) == -1)
+      return -1;
+    buffer_event.repeat_range = buffer_time;  
+    buffer_event.shown = 0;
+    update_event_time(time(NULL), &buffer_event);
+    g_daemon_data.events.data[g_daemon_data.events.size++] = buffer_event;
+  }
+  fprintf(dbg_file, "%d\n", (int)g_daemon_data.events.size); //F_DBG
+  return 0;
 }
 
 void read_config()
@@ -130,6 +171,38 @@ void read_config()
   fclose(config);
   if (scan_status == -1)
     on_error(MSG_ERR_CONFIG_PARSE, ERRMODE_SIMPLE_MSG);
+  if (!g_daemon_data.events.size)
+    on_error(MSG_ERR_CONFIG_EMPTY, ERRMODE_SIMPLE_MSG);
+}
+
+void show_event(struct event_t* p_event)
+{
+  char command[MAX_SYS_CMD_LENGTH + 1];
+  if (strcpy(command, SYS_CMD_1) == NULL)
+    on_error(MSG_ERR_SYS_CAT, ERRMODE_SIMPLE_MSG);
+  if (strcat(command, p_event->text) == NULL)
+    on_error(MSG_ERR_SYS_CAT, ERRMODE_SIMPLE_MSG);
+  if (strcat(command, SYS_CMD_2) == NULL)
+    on_error(MSG_ERR_SYS_CAT, ERRMODE_SIMPLE_MSG);
+  system(command);
+}
+
+void process_event(struct event_t* p_event)
+{
+  time_t current_time = time(NULL);
+
+  if (!p_event->shown && current_time > p_event->time)
+  {
+    show_event(p_event);
+    update_event_time(current_time, p_event);
+  }
+}
+
+void daemon_do()
+{
+  int i;
+  for (i = 0; i < g_daemon_data.events.size; ++i)
+    process_event(&g_daemon_data.events.data[i]);
 }
 
 void on_sigterm()
@@ -247,15 +320,6 @@ enum start_mode_t {
   MODE_START,
 };
 
-void daemon_do() //!!
-{
-  FILE* tell = fopen("tell.txt", "a");
-  if (!tell)
-    exit(1);
-  fprintf(tell, "%s\n", g_daemon_data.word);
-  fclose(tell);
-}
-
 enum start_mode_t parse_run_mode(const char* arg) 
 { 
   if ((strcmp(arg, "start") == 0) || (strcmp(arg, "stop") == 0))
@@ -296,7 +360,6 @@ int terminate_existing_daemon()
     fclose(pid_file);
     if (scan_status == -1)
       on_error(FORMAT_ERR_PID_READ, ERRMODE_ERRNO_FORMAT);
-    printf("PID:%d\n", pid); //DBG
     if (is_pid_running(pid) && (kill(pid, SIGTERM) != 0))
       on_error(FORMAT_ERR_KILL_PID, ERRMODE_ERRNO_FORMAT);
     return 0;
@@ -339,6 +402,11 @@ int main(int argc, char** argv)
 {
   enum start_mode_t mode;
   
+  dbg_file = fopen("dbg.txt", "a"); //DBG
+  if (!dbg_file)
+    exit(1);
+  fprintf(dbg_file, "%s\n", "~~~~~~~~~~~~~~");
+
   mode = handle_args(argc, argv);
   handle_start(mode);
   handle_signals();
