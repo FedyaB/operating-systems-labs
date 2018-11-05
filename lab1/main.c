@@ -124,11 +124,13 @@ void update_event_time(time_t current_time, struct event_t* p_event)
   long int difference;
   long int range = (long int)p_event->repeat_range;
 
-  if (!range)
-    p_event->shown = 1;
-  else
-    if ((difference = difftime(current_time, p_event->time)) > 0)
+  if ((difference = difftime(current_time, p_event->time)) > 0)
+  {
+    if (!range)
+      p_event->shown = 1;
+    else
       p_event->time += (difference / range + (difference % range ? 1 : 0)) * range;
+  }
 }
 
 int parse_config_data(FILE* config)
@@ -145,9 +147,9 @@ int parse_config_data(FILE* config)
     buffer_event.time = buffer_time;
     if (fgets(buffer_line, MAX_TEXT_LENGTH, config) == NULL || sscanf(buffer_line, "%d", &buffer_time) == -1)
       return -1;
-    buffer_event.repeat_range = buffer_time;  
-    update_event_time(time(NULL), &buffer_event);
+    buffer_event.repeat_range = buffer_time; 
     buffer_event.shown = 0;
+    update_event_time(time(NULL), &buffer_event);
     g_daemon_data.events.data[g_daemon_data.events.size++] = buffer_event;
   }
   return 0;
