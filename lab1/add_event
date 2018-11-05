@@ -1,0 +1,38 @@
+#!/bin/bash
+usage="USAGE: add_event date time [-h|d|w] text"
+config="config.txt"
+if [ "$#" -lt 3 ] || [ "$#" -gt 4 ] ; then
+  echo $usage
+  exit 1
+fi
+datetime="$1 $2"
+if [ "$#" = 3 ] ; then
+  repeat=0
+  text="$3"   
+else
+  s="$3"
+  option=${s:1}
+  if [ -z $option ] ; then
+    echo $usage
+    exit 1
+  elif [ $option = "h" ] ; then
+    repeat=3600
+  elif [ $option = "d" ] ; then
+    repeat=86400
+  elif [ $option = "w" ] ; then
+    repeat=604800
+  else
+    echo $usage
+    exit 1
+  fi
+  text="$4"
+fi
+epoch=$(date -d "$datetime" +"%s")
+if [ $? -ne 0 ] ; then
+  echo "Invalid date/time: \"$datetime\""
+  echo "Correct format: \"YYYY-MM-DD HH:mm[:ss]\" OR \"MM/DD/YYYY HH:mm[:ss]\""
+  exit 1
+fi
+echo $text >> $config
+echo $epoch >> $config
+echo $repeat >> $config

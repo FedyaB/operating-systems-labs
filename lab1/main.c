@@ -64,8 +64,6 @@
 #define MAX_SYS_CMD_LENGTH 1184 //MAX_TEXT_LENGTH + 160
 #define DAEMON_SLEEP_DURATION 10
 
-FILE* dbg_file = NULL; //DBG
-
 struct event_t
 {
   time_t time;
@@ -126,8 +124,6 @@ void update_event_time(time_t current_time, struct event_t* p_event)
   long int difference;
   long int range = (long int)p_event->repeat_range;
 
-  fprintf(dbg_file, "TEXT:%s\nEPOCH:%ld\nREP:%ld\nSHOWN:%d\n", p_event->text, (long int)p_event->time, (long int)p_event->repeat_range, p_event->shown); //F_DBG
-
   if (!range)
     p_event->shown = 1;
   else
@@ -150,11 +146,10 @@ int parse_config_data(FILE* config)
     if (fgets(buffer_line, MAX_TEXT_LENGTH, config) == NULL || sscanf(buffer_line, "%d", &buffer_time) == -1)
       return -1;
     buffer_event.repeat_range = buffer_time;  
-    buffer_event.shown = 0;
     update_event_time(time(NULL), &buffer_event);
+    buffer_event.shown = 0;
     g_daemon_data.events.data[g_daemon_data.events.size++] = buffer_event;
   }
-  fprintf(dbg_file, "%d\n", (int)g_daemon_data.events.size); //F_DBG
   return 0;
 }
 
@@ -401,11 +396,6 @@ void handle_start(enum start_mode_t mode)
 int main(int argc, char** argv)
 {
   enum start_mode_t mode;
-  
-  dbg_file = fopen("dbg.txt", "a"); //DBG
-  if (!dbg_file)
-    exit(1);
-  fprintf(dbg_file, "%s\n", "~~~~~~~~~~~~~~");
 
   mode = handle_args(argc, argv);
   handle_start(mode);
@@ -418,3 +408,4 @@ int main(int argc, char** argv)
   }
   return 0;
 }
+
