@@ -22,7 +22,6 @@ void connector_create()
   fdr = open(FIFO_NAME, O_RDONLY | O_NONBLOCK);
   fdw = open(FIFO_NAME, O_WRONLY | O_NONBLOCK);
   created = (fdr != -1 && fdw != -1);
-  printf("%d\n%d\n", created, errno);
 }
 
 int connector_read(void* buffer, size_t size)
@@ -44,4 +43,3 @@ void connector_destruct()
 {
   unlink(FIFO_NAME);
 }
-
