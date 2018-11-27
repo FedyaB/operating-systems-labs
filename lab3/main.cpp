@@ -8,6 +8,24 @@
 
 Set<int>* p_set1 = NULL;
 Set<int>* p_set2 = NULL;
+Set<int>* working_set = NULL;
+
+size_t writers = 10;
+size_t readers = 10;
+size_t entries = 10;
+
+int* shared_data = NULL;
+size_t tests_n = 10;
+
+void on_error(const char* msg)
+{
+  std::cerr << msg << std::endl;
+  if (p_set1)
+    delete p_set1;
+  if (p_set2)
+    delete p_set2;
+  exit(1);
+}
 
 struct TestResult
 {
@@ -26,6 +44,7 @@ public:
   }
 
   TestResult() : success(false), time(0) {}
+  TestResult(bool i_success) : success(i_success), time(0) {}
   bool success;
   int time;
 };
@@ -33,64 +52,139 @@ public:
 class TestEngine
 {
 public:
-  TestEngine() : writers(0), readers(0), entries(0) {}
-  TestEngine(size_t i_writers, size_t i_readers, size_t i_entries) : writers(i_writers), readers(i_readers), entries(i_entries) {}
-
   void test_set(Set<int>* p_set);
   void test_speed(Set<int>* p_set1, Set<int>* p_set2);
 private:
-  size_t writers;
-  size_t readers;
-  size_t entries;
+  TestResult test_readers();
+  TestResult test_writers();
+  TestResult test_complex();
 
-  TestResult test_readers(Set<int>* p_set);
-  TestResult test_writers(Set<int>* p_set);
-  TestResult test_complex(Set<int>* p_set);
+  void test_speed_randomized(Set<int>* p_set1, Set<int>* p_set2);
+  void test_speed_fixed(Set<int>* p_set1, Set<int>* p_set2);
 };
 
-TestResult TestEngine::test_readers(Set<int>* p_set)
+void* readers_routine(void* parameter)
 {
-  TestResult result;
-  result.success = true;
-  return result;
+  int* data = reinterpret_cast<int*>(parameter);
+  for (size_t i = 0; i < entries; ++i)
+    working_set->remove(data[i]);
+  return nullptr;
 }
 
-TestResult TestEngine::test_writers(Set<int>* p_set)
+TestResult TestEngine::test_readers()
 {
-  TestResult result;
-  result.success = true;
-  return result;
+  pthread_t* threads = new pthread_t[readers];
+  pthread_attr_t* attributes = new pthread_attr_t[readers];
+
+  if (!threads || !attributes)
+    on_error("Memory allocation problem");
+
+  for (size_t i = 0; i < readers * entries; ++i)
+    working_set->add(shared_data[i]);
+
+  for (size_t i = 0; i < readers; ++i)
+    pthread_attr_init(&(attributes[i]));
+  for (size_t i = 0; i < readers; ++i)
+    pthread_create(&(threads[i]), &(attributes[i]), readers_routine, shared_data + i * entries);
+  for (size_t i = 0; i < readers; ++i)
+    pthread_join(threads[i], NULL);
+
+  for (size_t i = 0; i < readers * entries; ++i)
+    if (working_set->contains(shared_data[i]))
+      return TestResult(false);
+
+  delete[] threads;
+  delete[] attributes;
+  return TestResult(true);
 }
 
-TestResult TestEngine::test_complex(Set<int>* p_set)
+void* writers_routine(void* parameter)
 {
-  TestResult result;
-  result.success = true;
-  return result;
+  int* data = reinterpret_cast<int*>(parameter);
+  for (size_t i = 0; i < entries; ++i)
+    working_set->add(data[i]);
+  return nullptr;
+}
+
+TestResult TestEngine::test_writers()
+{
+  pthread_t* threads = new pthread_t[writers];
+  pthread_attr_t* attributes = new pthread_attr_t[writers];
+
+  if (!threads || !attributes)
+    on_error("Memory allocation problem");
+
+  for (size_t i = 0; i < writers; ++i)
+    pthread_attr_init(&(attributes[i]));
+  for (size_t i = 0; i < writers; ++i)
+    pthread_create(&(threads[i]), &(attributes[i]), writers_routine, shared_data + i * entries);
+  for (size_t i = 0; i < writers; ++i)
+    pthread_join(threads[i], NULL);
+
+  for (size_t i = 0; i < writers * entries; ++i)
+    if (!working_set->contains(shared_data[i]))
+      return TestResult(false);
+
+  for (size_t i = 0; i < writers * entries; ++i)
+    working_set->remove(i);
+
+  delete[] threads;
+  delete[] attributes;
+  return TestResult(true);
+}
+
+TestResult TestEngine::test_complex()
+{
+  return TestResult(true);
 }
 
 void TestEngine::test_set(Set<int>* p_set)
 {
-  std::cout << "Test Readers...\n" << test_readers(p_set) << std::endl;
-  std::cout << "Test Writers...\n" << test_writers(p_set) << std::endl;
-  std::cout << "Test Complex...\n" << test_complex(p_set) << std::endl;
+  working_set = p_set;
+
+  shared_data = new int[writers * entries];
+  if (!shared_data)
+    on_error("Memory allocation problem");
+  for (size_t i = 0; i < writers * entries; ++i)
+    shared_data[i] = (int)i;
+  std::cout << "Test Writers...\n" << test_writers() << std::endl;
+  delete[] shared_data;
+
+  shared_data = new int[readers * entries];
+  if (!shared_data)
+    on_error("Memory allocation problem");
+  for (size_t i = 0; i < readers * entries; ++i)
+    shared_data[i] = (int)i;
+  std::cout << "Test Readers...\n" << test_readers() << std::endl;
+  delete[] shared_data;
+
+  //TODO Test complex
+  std::cout << "Test Complex...\n" << test_complex() << std::endl;
 }
 
 void TestEngine::test_speed(Set<int>* p_set1, Set<int>* p_set2)
 {
+  std::cout << "Randomized" << std::endl;
+  test_speed_randomized(p_set1, p_set2);
+  std::cout << "Fixed" << std::endl;
+  test_speed_fixed(p_set1, p_set2);
+}
+
+void TestEngine::test_speed_randomized(Set<int>* p_set1, Set<int>* p_set2)
+{
+  //TODO Randomized test
   std::cout << "" << std::endl;
 }
 
-void on_error(const char* msg)
+void TestEngine::test_speed_fixed(Set<int>* p_set1, Set<int>* p_set2)
 {
-  std::cerr << msg << std::endl;
-  if (p_set1)
-    delete p_set1;
-  exit(1);
+  //TODO Fixed test
+  std::cout << "" << std::endl;
 }
 
 int main(int argc, char** argv)
 {
+  //TODO Command-line args
   if (argc != 1 && argc != 4)
     on_error("USAGE: app [readers, writers, entries]");
 
@@ -102,22 +196,13 @@ int main(int argc, char** argv)
   if (!p_set1 || !p_set2)
     on_error("Memory allocation problem");
 
-  std::cout << p_set1->contains(0) << std::endl;
-  p_set1->add(1);
-  p_set1->add(0);
-  p_set1->remove(2);
-  p_set1->add(2);
-  std::cout << p_set1->contains(0) << std::endl;
-
-  std::cout << p_set2->contains(0) << std::endl;
-  p_set2->add(0);
-  p_set2->add(1);
-  p_set2->remove(3);
-  std::cout << p_set2->contains(0) << std::endl;
-
   TestEngine engine;
+  std::cout << "\nFine-grained sync set:" << std::endl;
   engine.test_set(p_set1);
-
+  std::cout << "\nOptimistic sync set:" << std::endl;
+  engine.test_set(p_set2);
+  std::cout << "\nSpeed test:" << std::endl;
+  engine.test_speed(p_set1, p_set2);
   delete p_set1;
   delete p_set2;
   return 0;

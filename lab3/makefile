@@ -6,6 +6,6 @@ EXECUTABLE=lab3
 SOURCES=$(shell find . -name "*.$(EXT)")
 
 all: $(SOURCES)
-	$(COMPILER) $(CFLAGS) $(SOURCES) -o $(EXECUTABLE)
+	$(COMPILER) $(CFLAGS) $(SOURCES) -o $(EXECUTABLE) -lpthread
 clean:
 	rm -f *.o $(EXECUTABLE)
