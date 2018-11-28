@@ -9,10 +9,10 @@
 
 //Optimistic synchronization set
 template <class T>
-class SetOS : public Set<T>
+class SetOS: public Set<T>
 {
 public:
-  SetOS() : _previous(nullptr), _current(nullptr)
+  SetOS()
   {
     if (!error_handler) //Error handler needs to be specified before
       error_handler(g_msg_err_error_handler);
@@ -25,14 +25,14 @@ public:
       error_handler(g_msg_err_node_create);
   }
 
-  ~SetOS()
+  ~SetOS() 
   {
     //Delete all elements from the list
     for (Node *current = head, *next = nullptr; current != nullptr; current = next)
     {
       next = current->next;
       delete current;
-    }
+    } 
   }
 
   bool add(const T& item)
@@ -41,7 +41,14 @@ public:
     while (true)
     {
       //Update _current and _previous so we're in the key position
-      iterate_over_list(key);
+      Node* _previous = head;
+      Node* _current = head->next;
+      while (_current->key < key)
+      {
+        _previous = _current;
+        _current = _current->next;
+      }
+
       //Lock the nodes under the position
       _previous->lock();
       _current->lock();
@@ -51,7 +58,7 @@ public:
         if (_current->key == key)
         {
           _previous->unlock();
-          _current->unlock();
+          _current->unlock();  
           return false;
         }
         else
@@ -78,7 +85,14 @@ public:
     while (true)
     {
       //Update _current and _previous so we're in the key position
-      iterate_over_list(key);
+      Node* _previous = head;
+      Node* _current = head->next;
+      while (_current->key < key)
+      {
+        _previous = _current;
+        _current = _current->next;
+      }
+
       _previous->lock();
       _current->lock();
       //Check that _previous points to _current and is reachable from the head
@@ -110,7 +124,14 @@ public:
     size_t key = generate_hash(item);
     while (true)
     {
-      iterate_over_list(key);
+      Node* _previous = head;
+      Node* _current = head->next;
+      while (_current->key < key)
+      {
+        _previous = _current;
+        _current = _current->next;
+      }
+
       _previous->lock();
       _current->lock();
       if (validate(_previous, _current))
@@ -124,7 +145,7 @@ public:
     }
   }
 
-  static void set_error_handler(void(*handler)(const char*))
+  static void set_error_handler(void (*handler)(const char*))
   {
     error_handler = handler;
   }
@@ -138,19 +159,19 @@ private:
     T item; //Raw data
     size_t key; //Data key (hash)
     Node* next; //Pointer to the next node
-
-                //Lock the node
-    void lock()
-    {
+    
+    //Lock the node
+    void lock() 
+    { 
       if (pthread_mutex_lock(&mutex) != 0)
-        error_handler(g_msg_err_mutex_lock);
+        error_handler(g_msg_err_mutex_lock); 
     }
 
     //Unlock the node
-    void unlock()
-    {
+    void unlock() 
+    { 
       if (pthread_mutex_unlock(&mutex) != 0)
-        error_handler(g_msg_err_mutex_unlock);
+        error_handler(g_msg_err_mutex_unlock); 
     }
 
   private:
@@ -158,10 +179,7 @@ private:
   };
 
   Node* head; //Head of the list
-  static void(*error_handler)(const char*); //Fatal errors handler
-
-  Node* _previous;
-  Node* _current;
+  static void (*error_handler)(const char*); //Fatal errors handler
 
   //Validate that _previous points to _current and is reachable from the head
   bool validate(Node* previous, Node* current)
@@ -176,18 +194,6 @@ private:
     return false;
   }
 
-  void iterate_over_list(size_t key)
-  {
-    //We don't need locks here since optimistic sync
-    _previous = head;
-    _current = head->next;
-    while (_current->key < key)
-    {
-      _previous = _current;
-      _current = _current->next;
-    }
-  }
-
   size_t generate_hash(const T& item)
   {
     return std::hash<T>()(item);
@@ -195,7 +201,8 @@ private:
 };
 
 template <class T>
-void(*SetOS<T>::error_handler)(const char*) = nullptr;
+void (*SetOS<T>::error_handler)(const char*) = nullptr;
 
 #endif
+
 

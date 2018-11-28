@@ -9,10 +9,10 @@
 
 //Fine-grained synchronization set
 template <class T>
-class SetFGS : public Set<T>
+class SetFGS: public Set<T>
 {
 public:
-  SetFGS() : _current(nullptr), _previous(nullptr)
+  SetFGS()
   {
     if (!error_handler) //Error handler needs to be specified before
       error_handler(g_msg_err_error_handler);
@@ -25,14 +25,14 @@ public:
       error_handler(g_msg_err_node_create);
   }
 
-  ~SetFGS()
+  ~SetFGS() 
   {
     //Delete all elements from the list
     for (Node *current = head, *next = nullptr; current != nullptr; current = next)
     {
       next = current->next;
       delete current;
-    }
+    } 
   }
 
   bool add(const T& item)
@@ -40,7 +40,17 @@ public:
     //Generate hash for a provided item
     size_t key = generate_hash(item);
     //Update _current and _previous so we're in the key position
-    iterate_over_list(key);
+    head->lock();
+    Node* _previous = head;
+    Node* _current = head->next;
+    _current->lock();
+    while (_current->key < key)
+    {
+      _previous->unlock();
+      _previous = _current;
+      _current = _current->next;
+      _current->lock();
+    }
     //If the element is in list then do nothing 
     if (_current->key == key)
     {
@@ -65,7 +75,17 @@ public:
     //Generate hash for a provided item
     size_t key = generate_hash(item);
     //Update _current and _previous so we're in the key position
-    iterate_over_list(key);
+    Node* _previous = head;
+    Node* _current = head->next;
+    _current->lock();
+    while (_current->key < key)
+    {
+      _previous->unlock();
+      _previous = _current;
+      _current = _current->next;
+      _current->lock();
+    }
+    
     if (_current->key == key)
     {
       //Delete if found
@@ -85,14 +105,24 @@ public:
     //Generate hash for a provided item
     size_t key = generate_hash(item);
     //Update _current and _previous so we're in the key position
-    iterate_over_list(key);
+    Node* _previous = head;
+    Node* _current = head->next;
+    _current->lock();
+    while (_current->key < key)
+    {
+      _previous->unlock();
+      _previous = _current;
+      _current = _current->next;
+      _current->lock();
+    }
+
     _current->unlock();
     _previous->unlock();
     //Return true if the element was found
     return _current->key == key;
   }
 
-  static void set_error_handler(void(*handler)(const char*))
+  static void set_error_handler(void (*handler)(const char*))
   {
     error_handler = handler;
   }
@@ -106,19 +136,19 @@ private:
     T item; //Raw data
     size_t key; //Data key (hash)
     Node* next; //Pointer to the next node
-
-                //Lock the node
-    void lock()
-    {
+    
+    //Lock the node
+    void lock() 
+    { 
       if (pthread_mutex_lock(&mutex) != 0)
-        error_handler(g_msg_err_mutex_lock);
+        error_handler(g_msg_err_mutex_lock); 
     }
 
     //Unlock the node
-    void unlock()
-    {
+    void unlock() 
+    { 
       if (pthread_mutex_unlock(&mutex) != 0)
-        error_handler(g_msg_err_mutex_unlock);
+        error_handler(g_msg_err_mutex_unlock); 
     }
 
   private:
@@ -126,27 +156,7 @@ private:
   };
 
   Node* head; //Head of the list
-  static void(*error_handler)(const char*); //Fatal errors handler
-
-  Node* _current;
-  Node* _previous;
-
-  void iterate_over_list(size_t key)
-  {
-    //While iterating we lock every node we look through
-    head->lock();
-    _previous = head;
-    _current = head->next;
-    _current->lock();
-    while (_current->key < key)
-    {
-      _previous->unlock();
-      _previous = _current;
-      _current = _current->next;
-      _current->lock();
-    }
-    //In the end we have _current and _previous nodes locked
-  }
+  static void (*error_handler)(const char*); //Fatal errors handler
 
   size_t generate_hash(const T& item)
   {
@@ -155,7 +165,8 @@ private:
 };
 
 template <class T>
-void(*SetFGS<T>::error_handler)(const char*) = nullptr;
+void (*SetFGS<T>::error_handler)(const char*) = nullptr;
 
 #endif
+
 
