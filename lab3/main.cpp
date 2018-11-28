@@ -19,7 +19,9 @@ size_t entries = 10;
 
 //Data for speed tests
 int* shared_data = NULL;
+int* complex_test_data = NULL;
 size_t tests_n = 10;
+size_t complex_readers_block_size = 0;
 
 //Error handler
 void on_error(const char* msg)
@@ -119,8 +121,60 @@ static TestResult test_writers()
   return TestResult(true);
 }
 
+//Readers complex test thread routine 
+static void* readers_complex_routine(void* parameter)
+{
+  int* data = reinterpret_cast<int*>(parameter);
+  for (size_t i = 0; i < complex_readers_block_size; ++i)
+    if (working_set->contains(data[i]))
+      ++complex_test_data[data[i]];
+  pthread_exit(0);
+}
+
+static void create_and_run_threads_complex_readers(pthread_t* threads, pthread_attr_t* attributes)
+{
+  for (size_t i = 0; i < readers; ++i)
+    pthread_attr_init(&(attributes[i]));
+  for (size_t i = 0; i < readers; ++i)
+    if (pthread_create(&(threads[i]), &(attributes[i]), readers_complex_routine, shared_data + i * complex_readers_block_size) != 0)
+      on_error("Too many threads");
+  for (size_t i = 0; i < readers; ++i)
+    pthread_join(threads[i], NULL);
+}
+
 static TestResult test_complex()
 {
+  pthread_t* threads = new pthread_t[writers];
+  pthread_attr_t* attributes = new pthread_attr_t[writers];
+  complex_readers_block_size = entries * ((double)writers / readers);
+  complex_test_data = new int[writers * entries];
+  if (!complex_test_data || !threads || !attributes)
+    on_error("Memory allocation problem");
+
+  for (size_t i = 0; i < writers * entries; ++i)
+    complex_test_data[i] = 0;
+  create_and_run_threads(threads, attributes, writers, entries, writers_routine);
+
+  delete[] threads;
+  delete[] attributes;
+  threads = new pthread_t[readers];
+  attributes = new pthread_attr_t[readers];
+  if (!threads || !attributes)
+    on_error("Memory allocation problem");
+
+  create_and_run_threads_complex_readers(threads, attributes);
+
+  size_t test_size = writers * entries - (writers * entries) % complex_readers_block_size;
+  for (size_t i = 0; i < test_size; ++i)
+    if (complex_test_data[i] != 1)
+      return TestResult(false);
+
+  for (size_t i = 0; i < writers * entries; ++i)
+    working_set->remove(shared_data[i]);
+
+  delete[] complex_test_data;
+  delete[] threads;
+  delete[] attributes;
   return TestResult(true);
 }
 
@@ -165,7 +219,7 @@ static void prepare_shared_data_fixed(size_t threads_num, size_t threads_data_en
     on_error("Memory allocation problem");
   for (size_t i = 0; i < threads_num; ++i)
     for (size_t j = 0; j < threads_data_entries; ++j)
-      shared_data[i * threads_num + j] = (int)(i + j * threads_data_entries);
+      shared_data[i * threads_data_entries + j] = (int)(i + j * threads_num);
 }
 
 static void test_set(Set<int>* p_set)
@@ -180,8 +234,9 @@ static void test_set(Set<int>* p_set)
   std::cout << "Test Readers...\n" << test_readers() << std::endl;
   delete[] shared_data;
 
-  //TODO Test complex
+  prepare_shared_data(writers, entries);
   std::cout << "Test Complex...\n" << test_complex() << std::endl;
+  delete[] shared_data;
 }
 
 //Return execution time for test(...) on p_set
@@ -208,14 +263,18 @@ static void test_speed_common(Set<int>* p_set1, Set<int>* p_set2, void(*data_cre
 
   //Test readers
   std::cout << "Test Readers" << std::endl;
-  std::cout << "Test Writers" << std::endl;
   data_creator(readers, entries);
   std::cout << "FGS: Execution time: " << test_speed_generic(p_set1, test_readers) << std::endl;
   std::cout << "OS: Execution time: " << test_speed_generic(p_set2, test_readers) << std::endl;
   delete[] shared_data;
 
   //Test complex
-  //TODO Complex test
+  std::cout << "Test Complex" << std::endl;
+  data_creator(writers, entries);
+  std::cout << "FGS: Execution time: " << test_speed_generic(p_set1, test_complex) << std::endl;
+  std::cout << "OS: Execution time: " << test_speed_generic(p_set2, test_complex) << std::endl;
+  delete[] shared_data;
+
 }
 
 static void test_speed(Set<int>* p_set1, Set<int>* p_set2)
@@ -238,7 +297,6 @@ int main(int argc, char** argv)
     readers = atoi(argv[1]);
     writers = atoi(argv[2]);
     entries = atoi(argv[3]);
-    std::cout << readers << writers << entries;
     if (!readers || !writers || !entries)
       on_error("USAGE: app [readers, writers, entries]");
   }
@@ -264,5 +322,3 @@ int main(int argc, char** argv)
   delete p_set2;
   return 0;
 }
-
-
