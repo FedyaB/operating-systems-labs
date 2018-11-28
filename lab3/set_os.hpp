@@ -9,7 +9,7 @@
 
 //Optimistic synchronization set
 template <class T>
-class SetOS: public Set<T>
+class SetOS : public Set<T>
 {
 public:
   SetOS()
@@ -25,14 +25,14 @@ public:
       error_handler(g_msg_err_node_create);
   }
 
-  ~SetOS() 
+  ~SetOS()
   {
     //Delete all elements from the list
     for (Node *current = head, *next = nullptr; current != nullptr; current = next)
     {
       next = current->next;
       delete current;
-    } 
+    }
   }
 
   bool add(const T& item)
@@ -58,7 +58,7 @@ public:
         if (_current->key == key)
         {
           _previous->unlock();
-          _current->unlock();  
+          _current->unlock();
           return false;
         }
         else
@@ -145,7 +145,7 @@ public:
     }
   }
 
-  static void set_error_handler(void (*handler)(const char*))
+  static void set_error_handler(void(*handler)(const char*))
   {
     error_handler = handler;
   }
@@ -159,19 +159,19 @@ private:
     T item; //Raw data
     size_t key; //Data key (hash)
     Node* next; //Pointer to the next node
-    
-    //Lock the node
-    void lock() 
-    { 
+
+                //Lock the node
+    void lock()
+    {
       if (pthread_mutex_lock(&mutex) != 0)
-        error_handler(g_msg_err_mutex_lock); 
+        error_handler(g_msg_err_mutex_lock);
     }
 
     //Unlock the node
-    void unlock() 
-    { 
+    void unlock()
+    {
       if (pthread_mutex_unlock(&mutex) != 0)
-        error_handler(g_msg_err_mutex_unlock); 
+        error_handler(g_msg_err_mutex_unlock);
     }
 
   private:
@@ -179,9 +179,9 @@ private:
   };
 
   Node* head; //Head of the list
-  static void (*error_handler)(const char*); //Fatal errors handler
+  static void(*error_handler)(const char*); //Fatal errors handler
 
-  //Validate that _previous points to _current and is reachable from the head
+                                            //Validate that _previous points to _current and is reachable from the head
   bool validate(Node* previous, Node* current)
   {
     Node* node = head;
@@ -201,8 +201,7 @@ private:
 };
 
 template <class T>
-void (*SetOS<T>::error_handler)(const char*) = nullptr;
+void(*SetOS<T>::error_handler)(const char*) = nullptr;
 
 #endif
-
 

@@ -9,7 +9,7 @@
 
 //Fine-grained synchronization set
 template <class T>
-class SetFGS: public Set<T>
+class SetFGS : public Set<T>
 {
 public:
   SetFGS()
@@ -25,14 +25,14 @@ public:
       error_handler(g_msg_err_node_create);
   }
 
-  ~SetFGS() 
+  ~SetFGS()
   {
     //Delete all elements from the list
     for (Node *current = head, *next = nullptr; current != nullptr; current = next)
     {
       next = current->next;
       delete current;
-    } 
+    }
   }
 
   bool add(const T& item)
@@ -75,6 +75,7 @@ public:
     //Generate hash for a provided item
     size_t key = generate_hash(item);
     //Update _current and _previous so we're in the key position
+    head->lock();
     Node* _previous = head;
     Node* _current = head->next;
     _current->lock();
@@ -85,7 +86,7 @@ public:
       _current = _current->next;
       _current->lock();
     }
-    
+
     if (_current->key == key)
     {
       //Delete if found
@@ -104,6 +105,7 @@ public:
   {
     //Generate hash for a provided item
     size_t key = generate_hash(item);
+    head->lock();
     //Update _current and _previous so we're in the key position
     Node* _previous = head;
     Node* _current = head->next;
@@ -122,7 +124,7 @@ public:
     return _current->key == key;
   }
 
-  static void set_error_handler(void (*handler)(const char*))
+  static void set_error_handler(void(*handler)(const char*))
   {
     error_handler = handler;
   }
@@ -136,19 +138,19 @@ private:
     T item; //Raw data
     size_t key; //Data key (hash)
     Node* next; //Pointer to the next node
-    
-    //Lock the node
-    void lock() 
-    { 
+
+                //Lock the node
+    void lock()
+    {
       if (pthread_mutex_lock(&mutex) != 0)
-        error_handler(g_msg_err_mutex_lock); 
+        error_handler(g_msg_err_mutex_lock);
     }
 
     //Unlock the node
-    void unlock() 
-    { 
+    void unlock()
+    {
       if (pthread_mutex_unlock(&mutex) != 0)
-        error_handler(g_msg_err_mutex_unlock); 
+        error_handler(g_msg_err_mutex_unlock);
     }
 
   private:
@@ -156,7 +158,7 @@ private:
   };
 
   Node* head; //Head of the list
-  static void (*error_handler)(const char*); //Fatal errors handler
+  static void(*error_handler)(const char*); //Fatal errors handler
 
   size_t generate_hash(const T& item)
   {
@@ -165,8 +167,7 @@ private:
 };
 
 template <class T>
-void (*SetFGS<T>::error_handler)(const char*) = nullptr;
+void(*SetFGS<T>::error_handler)(const char*) = nullptr;
 
 #endif
-
 
